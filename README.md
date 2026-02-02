@@ -72,26 +72,3 @@ MIT License
 
 ---
 
-## 🚀 PASO 4: Comandos para subir tu código a GitHub
-
-```bash
-# Asegúrate de estar en la carpeta correcta
-cd "C:/Almacen/Proyectos/Proyectos Flutter/al_toque/app"
-
-# Verifica el estado del repositorio
-git status
-
-# Añade todos los archivos (excepto los del .gitignore)
-git add .
-
-# Realiza el commit inicial
-git commit -m "Initial commit: Tasas elTOQUE app v1.0"
-
-# Sube a GitHub (si ya configuraste el remote)
-git push origin main
-
-# Si el repositorio remoto no existe o da error
-git remote set-url origin https://github.com/AndyCG03/al_toque_app.git
-git push -u origin main
-```
-
