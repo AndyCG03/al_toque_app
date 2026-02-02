@@ -12,10 +12,9 @@ Aplicación **Flutter** para consultar tasas de cambio del mercado informal cuba
 ## ✨ Características
 
 - ✅ Calculadora de conversión entre múltiples monedas (**CUP, USD, MLC, USDT**, etc.)
-- ✅ Tasas actualizadas automáticamente desde la API de **elTOQUE**
+- ✅ Tasas actualizadas automáticamente desde la API de **elTOQUE** (usar VPN)
 - ✅ Funciona **offline** con datos en caché
 - ✅ Modo **oscuro / claro**
-- ✅ Tasas personalizables
 
 ---
 
