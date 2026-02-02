@@ -146,19 +146,80 @@ class _RatesScreenState extends State<RatesScreen> {
 
   Widget _buildRatesList(BuildContext context, RateModel data) {
     final theme = Theme.of(context);
-    final entries = data.tasas.entries.toList();
+
+    // Definir el orden de las monedas
+    final fiatOrder = ['USD', 'EUR', 'MLC'];
+    final cryptoOrder = ['USDT_TRC20', 'TRX', 'BNB'];
+
+    // Separar monedas fiat y crypto (excluir BTC)
+    final fiatEntries = <MapEntry<String, double>>[];
+    final cryptoEntries = <MapEntry<String, double>>[];
+
+    for (final entry in data.tasas.entries) {
+      if (entry.key == 'BTC') continue; // Excluir Bitcoin
+
+      if (fiatOrder.contains(entry.key)) {
+        fiatEntries.add(entry);
+      } else if (cryptoOrder.contains(entry.key)) {
+        cryptoEntries.add(entry);
+      }
+    }
+
+    // Ordenar según el orden definido
+    fiatEntries.sort((a, b) => fiatOrder.indexOf(a.key).compareTo(fiatOrder.indexOf(b.key)));
+    cryptoEntries.sort((a, b) => cryptoOrder.indexOf(a.key).compareTo(cryptoOrder.indexOf(b.key)));
 
     return Column(
-      children: entries.mapIndexed((index, entry) {
-        return AnimatedOpacity(
-          opacity: 1.0,
-          duration: Duration(milliseconds: 300 + (index * 60)),
-          child: _RateCard(
-            currency: entry.key,
-            rate: entry.value,
+      children: [
+        // Monedas Fiat
+        ...fiatEntries.mapIndexed((index, entry) {
+          return AnimatedOpacity(
+            opacity: 1.0,
+            duration: Duration(milliseconds: 300 + (index * 60)),
+            child: _RateCard(
+              currency: entry.key,
+              rate: entry.value,
+            ),
+          );
+        }).toList(),
+
+        // Separador si hay criptomonedas
+        if (cryptoEntries.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                Expanded(child: Divider(color: theme.colorScheme.outline)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'CRIPTOMONEDAS',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ),
+                Expanded(child: Divider(color: theme.colorScheme.outline)),
+              ],
+            ),
           ),
-        );
-      }).toList(),
+          const SizedBox(height: 4),
+        ],
+
+        // Criptomonedas
+        ...cryptoEntries.mapIndexed((index, entry) {
+          return AnimatedOpacity(
+            opacity: 1.0,
+            duration: Duration(milliseconds: 300 + ((fiatEntries.length + index) * 60)),
+            child: _RateCard(
+              currency: entry.key,
+              rate: entry.value,
+            ),
+          );
+        }).toList(),
+      ],
     );
   }
 
@@ -207,21 +268,19 @@ class _RateCard extends StatelessWidget {
 
   static const Map<String, String> _currencyNames = {
     'USD': 'Dólar Estadounidense',
+    'EUR': 'Euro',
     'MLC': 'Moneda Libre Convertible',
     'USDT_TRC20': 'Tether (USDT) TRC-20',
     'TRX': 'TRON',
-    'BTC': 'Bitcoin',
-    'ECU': 'Euro',
     'BNB': 'Binance Coin',
   };
 
   static const Map<String, String> _currencySymbols = {
     'USD': '\$',
+    'EUR': '€',
     'MLC': 'MLC',
     'USDT_TRC20': 'USDT',
     'TRX': 'TRX',
-    'BTC': '₿',
-    'ECU': '€',
     'BNB': 'BNB',
   };
 

@@ -1,9 +1,11 @@
 // lib/core/services/api_service.dart
 import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Importar dotenv
 import 'package:tasas_eltoque/core/models/rate_model.dart';
 
-// ⚠️  Reemplaza con tu token real obtenido en https://tasas.eltoque.com/docs/
-const String _API_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc2NzcxNDA2OCwianRpIjoiY2Q3MTMwODktNzE3My00YzIzLWFlMTktOGIxMmM4YmU0MGE3IiwidHlwZSI6ImFjY2VzcyIsInN1YiI6IjY5NGVlMDkyZTkyYmU3N2VhM2Y4NmY4OSIsIm5iZiI6MTc2NzcxNDA2OCwiZXhwIjoxNzk5MjUwMDY4fQ.i52HYyExOVihHqurMLkiVRr1u1n1Fsw77EcJFH7oVQI';
+// ⚠️  REMOVER o COMENTAR esta línea:
+// const String _API_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+
 const String _BASE_URL = 'https://tasas.eltoque.com';
 
 class ApiException implements Exception {
@@ -21,15 +23,19 @@ class ApiException implements Exception {
 
 class ApiService {
   late final Dio _dio;
+  late final String _apiToken;
 
   ApiService() {
+    // Obtener token del archivo .env
+    _apiToken = _getApiToken();
+
     _dio = Dio(
       BaseOptions(
         baseUrl: _BASE_URL,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),
         headers: {
-          'Authorization': 'Bearer $_API_TOKEN',
+          'Authorization': 'Bearer $_apiToken',  // Usar token obtenido
           'Accept': 'application/json',
         },
       ),
@@ -46,6 +52,46 @@ class ApiService {
         error: true,
       ),
     );
+  }
+
+  /// Método privado para obtener el token API del archivo .env
+  String _getApiToken() {
+    try {
+      // Intentar obtener del archivo .env
+      final token = dotenv.get('ELTOQUE_API_TOKEN');
+
+      // Validaciones de seguridad
+      if (token.isEmpty) {
+        throw Exception('ELTOQUE_API_TOKEN no está configurada en el archivo .env');
+      }
+
+      if (token == 'tu_token_aqui' || token.contains('eyJhbGciOiJ')) {
+        // Solo mostrar un warning en consola, no bloquear
+        print('⚠️  ADVERTENCIA: Parece que estás usando un token de ejemplo');
+        print('   Obtén tu token real en: https://tasas.eltoque.com/docs/');
+      }
+
+      return token;
+    } catch (e) {
+      // Si hay error cargando .env, mostrar mensaje útil
+      print('❌ ERROR cargando API token: $e');
+      print('   Asegúrate de que:');
+      print('   1. Tienes un archivo .env en la raíz del proyecto');
+      print('   2. El archivo contiene: ELTOQUE_API_TOKEN=tu_token_real');
+      print('   3. En pubspec.yaml está agregado en assets:');
+      print('      assets:');
+      print('        - .env');
+
+      // Para desarrollo, puedes devolver un token por defecto o lanzar error
+      throw Exception(
+          'No se pudo cargar ELTOQUE_API_TOKEN.\n'
+              'Solución:\n'
+              '1. Crea un archivo .env en la raíz del proyecto\n'
+              '2. Agrega: ELTOQUE_API_TOKEN=tu_token_real\n'
+              '3. Obtén tu token en: https://tasas.eltoque.com/docs/\n'
+              '4. Asegúrate de que pubspec.yaml incluye ".env" en assets'
+      );
+    }
   }
 
   /// Obtiene las tasas de cambio actuales (últimas 24h)

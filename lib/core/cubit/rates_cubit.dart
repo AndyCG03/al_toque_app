@@ -51,7 +51,7 @@ class RatesCubit extends Cubit<RatesState> {
       if (e.statusCode == 0 &&
           (e.message.contains('conexión') || e.message.contains('Tiempo de conexión'))) {
         message =
-        'No se pudo conectar a la API. Revisa tu conexión a internet o activa un VPN si estás bloqueado.';
+        'No se pudo conectar a la API. Revisa tu conexión a internet o activa un VPN.';
       } else {
         message = e.message; // cualquier otro error de API
       }
