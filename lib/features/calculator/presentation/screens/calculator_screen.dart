@@ -20,10 +20,6 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   RateModel? _rates;
   List<String> _availableCurrencies = [];
 
-  // ─── Modo de edición manual ───────────────────────────────
-  bool _useCustomRates = false;
-  Map<String, double> _customRates = {}; // Tasas personalizadas por el usuario
-
   @override
   void initState() {
     super.initState();
@@ -36,27 +32,11 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     super.dispose();
   }
 
-  void _updateRates(RateModel? data) {
-    // Si no hay datos o las tasas están vacías
-    if (data == null || data.tasas == null || data.tasas.isEmpty) {
-      setState(() {
-        _rates = null;
-        _availableCurrencies = ['CUP']; // Al menos CUP disponible
-        _result = null;
-      });
-      return;
-    }
-
+  void _updateRates(RateModel data) {
     if (_rates == null || _rates!.date != data.date) {
       setState(() {
         _rates = data;
         _availableCurrencies = ['CUP', ...data.tasas.keys.toList()];
-
-        // Inicializar tasas personalizadas con los valores actuales
-        if (_customRates.isEmpty && data.tasas.isNotEmpty) {
-          _customRates = Map.from(data.tasas);
-        }
-
         // Validar que las monedas seleccionadas existan
         if (!_availableCurrencies.contains(_sourceCurrency)) {
           _sourceCurrency = _availableCurrencies.length > 1 ? _availableCurrencies[1] : 'CUP';
@@ -70,23 +50,10 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   }
 
   void _calculate() {
-    // Si no hay tasas, limpiar resultado
     if (_rates == null) {
       setState(() => _result = null);
       return;
     }
-
-    // Obtener tasas activas con validación
-    final activeTasas = _useCustomRates
-        ? _customRates
-        : (_rates?.tasas ?? {});
-
-    // Si no hay tasas disponibles, limpiar resultado
-    if (activeTasas.isEmpty) {
-      setState(() => _result = null);
-      return;
-    }
-
     final text = _amountController.text.replaceAll(',', '.');
     final amount = double.tryParse(text);
     if (amount == null || amount <= 0) {
@@ -99,29 +66,17 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     if (_sourceCurrency == 'CUP' && _targetCurrency == 'CUP') {
       resultValue = amount;
     } else if (_sourceCurrency == 'CUP') {
-      // Validar que exista la tasa destino
-      final rate = activeTasas[_targetCurrency];
-      if (rate == null || rate <= 0) {
-        setState(() => _result = null);
-        return;
-      }
+      // CUP -> otra moneda: dividir por la tasa
+      final rate = _rates!.tasas[_targetCurrency]!;
       resultValue = amount / rate;
     } else if (_targetCurrency == 'CUP') {
-      // Validar que exista la tasa origen
-      final rate = activeTasas[_sourceCurrency];
-      if (rate == null || rate <= 0) {
-        setState(() => _result = null);
-        return;
-      }
+      // Otra moneda -> CUP: multiplicar por la tasa
+      final rate = _rates!.tasas[_sourceCurrency]!;
       resultValue = amount * rate;
     } else {
-      // Validar que existan ambas tasas
-      final rateSource = activeTasas[_sourceCurrency];
-      final rateTarget = activeTasas[_targetCurrency];
-      if (rateSource == null || rateTarget == null || rateSource <= 0 || rateTarget <= 0) {
-        setState(() => _result = null);
-        return;
-      }
+      // Entre dos monedas extranjeras: convertir primero a CUP y luego a destino
+      final rateSource = _rates!.tasas[_sourceCurrency]!;
+      final rateTarget = _rates!.tasas[_targetCurrency]!;
       resultValue = (amount * rateSource) / rateTarget;
     }
 
@@ -143,33 +98,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
     return BlocListener<RatesCubit, RatesState>(
       listener: (context, state) {
-        if (state is RatesLoaded) {
-          _updateRates(state.data);
-        } else if (state is RatesLoading) {
-          // Solo actualizar si hay caché disponible
-          if (state.cachedData != null) {
-            _updateRates(state.cachedData);
-          } else {
-            // Si no hay caché, mostrar estado vacío
-            setState(() {
-              _rates = null;
-              _availableCurrencies = ['CUP']; // Al menos CUP disponible
-              _result = null;
-            });
-          }
-        } else if (state is RatesError) {
-          // Solo actualizar si hay caché disponible
-          if (state.cachedData != null) {
-            _updateRates(state.cachedData);
-          } else {
-            // Si no hay caché, mostrar estado vacío
-            setState(() {
-              _rates = null;
-              _availableCurrencies = ['CUP']; // Al menos CUP disponible
-              _result = null;
-            });
-          }
-        }
+        if (state is RatesLoaded) _updateRates(state.data);
+        else if (state is RatesLoading && state.cachedData != null) _updateRates(state.cachedData!);
+        else if (state is RatesError && state.cachedData != null) _updateRates(state.cachedData!);
       },
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -179,20 +110,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             // Título
             Text('Calculadora', style: theme.textTheme.displaySmall),
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    _rates != null ? 'Tasas del ${_rates!.date}' : 'Sin datos de tasas aún',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-                if (_rates != null && _rates!.tasas != null && _rates!.tasas!.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  _buildCustomRateToggle(context),
-                ],
-              ],
+            Text(
+              _rates != null ? 'Tasas del ${_rates!.date}' : 'Sin datos de tasas aún',
+              style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 28),
 
@@ -290,7 +210,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                   selected,
                   style: theme.textTheme.titleMedium,
                 ),
-                Icon(Icons.keyboard_arrow_down, color: theme.colorScheme.onSurfaceVariant),
+                Icon(Icons.expand_more, color: theme.colorScheme.onSurfaceVariant),
               ],
             ),
           ),
@@ -307,27 +227,66 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      isScrollControlled: true, // ← IMPORTANTE: Permite scroll controlado
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Selecciona moneda', style: theme.textTheme.titleLarge),
-              const SizedBox(height: 16),
-              ...(_availableCurrencies.isEmpty
-                  ? [Text('No hay monedas disponibles', style: theme.textTheme.bodySmall)]
-                  : _availableCurrencies.map((c) => _CurrencyOption(
-                currency: c,
-                isSelected: c == current,
-                onTap: () {
-                  onChanged(c);
-                  Navigator.pop(ctx);
-                },
-              ))),
-            ],
-          ),
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6, // Altura inicial (60% de la pantalla)
+          minChildSize: 0.4,    // Altura mínima (40% de la pantalla)
+          maxChildSize: 0.9,    // Altura máxima (90% de la pantalla)
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header fijo
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Selecciona moneda',
+                        style: theme.textTheme.titleLarge,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Lista scrolleable
+                  Expanded(
+                    child: _availableCurrencies.isEmpty
+                        ? Center(
+                      child: Text(
+                        'No hay monedas disponibles',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    )
+                        : ListView.builder(
+                      controller: scrollController, // Controlador para el scroll
+                      shrinkWrap: true,
+                      itemCount: _availableCurrencies.length,
+                      itemBuilder: (context, index) {
+                        final currency = _availableCurrencies[index];
+                        return _CurrencyOption(
+                          currency: currency,
+                          isSelected: currency == current,
+                          onTap: () {
+                            onChanged(currency);
+                            Navigator.pop(ctx);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -367,23 +326,38 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     final theme = Theme.of(context);
     final hasResult = _result != null && _amountController.text.isNotEmpty;
 
-    return AnimatedCrossFade(
-      firstChild: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Resultado', style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.primary,
-            )),
-            const SizedBox(height: 6),
+    // Manejo seguro para evitar null
+    final resultValue = _result ?? 0.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: hasResult
+            ? theme.colorScheme.primaryContainer
+            : theme.colorScheme.surfaceVariant.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(16),
+        border: !hasResult
+            ? Border.all(
+          color: theme.colorScheme.outline,
+          style: BorderStyle.solid,
+          width: 1,
+        )
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Resultado',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: hasResult ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (hasResult) ...[
             Text(
-              _formatResult(_result!),
+              _formatResult(resultValue),
               style: theme.textTheme.displayMedium?.copyWith(
                 color: theme.colorScheme.primary,
               ),
@@ -395,83 +369,41 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 color: theme.colorScheme.primary.withOpacity(0.7),
               ),
             ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                'Ingresa un monto para ver el resultado',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           ],
-        ),
+        ],
       ),
-      secondChild: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: theme.colorScheme.outline,
-            style: BorderStyle.solid,
-            width: 1,
-          ),
-        ),
-        child: Center(
-          child: Text(
-            'Ingresa un monto para ver el resultado',
-            style: theme.textTheme.bodySmall,
-          ),
-        ),
-      ),
-      crossFadeState: hasResult ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-      duration: const Duration(milliseconds: 250),
     );
   }
 
   Widget _buildRateInfo(BuildContext context) {
-    if (_rates == null || _rates!.tasas == null || _rates!.tasas!.isEmpty) {
-      return const SizedBox();
-    }
-
+    if (_rates == null) return const SizedBox();
     final theme = Theme.of(context);
-    final activeTasas = _useCustomRates ? _customRates : _rates!.tasas!;
 
     String rateInfo = '';
-    if (_sourceCurrency != 'CUP' && activeTasas.containsKey(_sourceCurrency)) {
-      final rate = activeTasas[_sourceCurrency];
-      if (rate != null && rate > 0) {
-        rateInfo = '1 $_sourceCurrency = ${rate.toStringAsFixed(2)} CUP';
-      }
+    if (_sourceCurrency != 'CUP' && _rates!.tasas.containsKey(_sourceCurrency)) {
+      rateInfo = '1 $_sourceCurrency = ${_rates!.tasas[_sourceCurrency]!.toStringAsFixed(2)} CUP';
     }
-    if (_targetCurrency != 'CUP' && activeTasas.containsKey(_targetCurrency)) {
-      final rate = activeTasas[_targetCurrency];
-      if (rate != null && rate > 0) {
-        final extra = '1 $_targetCurrency = ${rate.toStringAsFixed(2)} CUP';
-        rateInfo = rateInfo.isEmpty ? extra : '$rateInfo  |  $extra';
-      }
+    if (_targetCurrency != 'CUP' && _rates!.tasas.containsKey(_targetCurrency)) {
+      final extra = '1 $_targetCurrency = ${_rates!.tasas[_targetCurrency]!.toStringAsFixed(2)} CUP';
+      rateInfo = rateInfo.isEmpty ? extra : '$rateInfo  |  $extra';
     }
 
-    if (rateInfo.isEmpty && !_useCustomRates) return const SizedBox();
+    if (rateInfo.isEmpty) return const SizedBox();
 
-    return Column(
-      children: [
-        if (rateInfo.isNotEmpty)
-          Text(
-            rateInfo,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: _useCustomRates ? theme.colorScheme.primary : null,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        if (_useCustomRates) ...[
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () => _showRateEditor(context),
-            icon: const Icon(Icons.edit_outlined, size: 16),
-            label: const Text('Editar tasas personalizadas'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: theme.colorScheme.primary,
-              side: BorderSide(color: theme.colorScheme.primary, width: 1),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              textStyle: theme.textTheme.labelMedium,
-            ),
-          ),
-        ],
-      ],
+    return Text(
+      rateInfo,
+      style: theme.textTheme.labelSmall,
+      textAlign: TextAlign.center,
     );
   }
 
@@ -481,103 +413,6 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     if (value < 0.0001) return value.toStringAsFixed(8);
     if (value < 1) return value.toStringAsFixed(6);
     return value.toStringAsFixed(2);
-  }
-
-  // ─── CUSTOM RATE CONTROLS ─────────────────────────────────────────────────
-
-  Widget _buildCustomRateToggle(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: () {
-        if (_rates == null || _rates!.tasas == null || _rates!.tasas!.isEmpty) {
-          return; // No hacer nada si no hay tasas
-        }
-
-        setState(() {
-          _useCustomRates = !_useCustomRates;
-          if (!_useCustomRates && _rates != null && _rates!.tasas != null) {
-            // Al desactivar, resetear las tasas personalizadas
-            _customRates = Map.from(_rates!.tasas!);
-          }
-          _calculate();
-        });
-      },
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: _useCustomRates
-              ? theme.colorScheme.primaryContainer
-              : theme.colorScheme.surfaceVariant.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: _useCustomRates ? theme.colorScheme.primary : Colors.transparent,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              _useCustomRates ? Icons.edit_rounded : Icons.edit_outlined,
-              size: 16,
-              color: _useCustomRates ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              _useCustomRates ? 'Personalizado' : 'Oficial',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: _useCustomRates ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showRateEditor(BuildContext context) {
-    if (_rates == null || _rates!.tasas == null || _rates!.tasas!.isEmpty) {
-      return; // No mostrar editor si no hay tasas
-    }
-
-    final theme = Theme.of(context);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: theme.colorScheme.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.9,
-        builder: (context, scrollController) => _RateEditorSheet(
-          customRates: _customRates,
-          originalRates: _rates!.tasas!,
-          onSave: (updatedRates) {
-            setState(() {
-              _customRates = updatedRates;
-              _calculate();
-            });
-            Navigator.pop(ctx);
-          },
-          onReset: () {
-            setState(() {
-              if (_rates != null && _rates!.tasas != null) {
-                _customRates = Map.from(_rates!.tasas!);
-              }
-              _calculate();
-            });
-            Navigator.pop(ctx);
-          },
-          scrollController: scrollController,
-        ),
-      ),
-    );
   }
 }
 
@@ -644,261 +479,6 @@ class _CurrencyOption extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ─── RATE EDITOR SHEET ──────────────────────────────────────────────────────
-
-class _RateEditorSheet extends StatefulWidget {
-  final Map<String, double> customRates;
-  final Map<String, double> originalRates;
-  final Function(Map<String, double>) onSave;
-  final VoidCallback onReset;
-  final ScrollController scrollController;
-
-  const _RateEditorSheet({
-    required this.customRates,
-    required this.originalRates,
-    required this.onSave,
-    required this.onReset,
-    required this.scrollController,
-  });
-
-  @override
-  State<_RateEditorSheet> createState() => _RateEditorSheetState();
-}
-
-class _RateEditorSheetState extends State<_RateEditorSheet> {
-  late Map<String, TextEditingController> _controllers;
-  late Map<String, double> _tempRates;
-
-  static const Map<String, String> _names = {
-    'USD': 'Dólar Estadounidense',
-    'MLC': 'Moneda Libre de Conversión',
-    'USDT_TRC20': 'Tether (USDT) TRC-20',
-    'TRX': 'TRON',
-    'BTC': 'Bitcoin',
-    'ECU': 'Euro',
-    'BNB': 'Binance Coin',
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    _tempRates = Map.from(widget.customRates);
-    _controllers = {};
-    for (final entry in _tempRates.entries) {
-      _controllers[entry.key] = TextEditingController(
-        text: entry.value.toStringAsFixed(2),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    for (final controller in _controllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  void _updateRate(String currency, String value) {
-    final parsed = double.tryParse(value.replaceAll(',', '.'));
-    if (parsed != null && parsed > 0) {
-      _tempRates[currency] = parsed;
-    }
-  }
-
-  bool get _hasChanges {
-    for (final entry in _tempRates.entries) {
-      if (entry.value != widget.customRates[entry.key]) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final entries = _tempRates.entries.toList();
-
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Editar Tasas', style: theme.textTheme.titleLarge),
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Modifica los valores de cambio para tus cálculos. Estos cambios no afectan las tasas oficiales.',
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: 20),
-
-          // Lista de tasas editables
-          Expanded(
-            child: ListView.builder(
-              controller: widget.scrollController,
-              itemCount: entries.length,
-              itemBuilder: (context, index) {
-                final entry = entries[index];
-                final currency = entry.key;
-                final originalRate = widget.originalRates[currency]!;
-                final controller = _controllers[currency]!;
-                final hasChanged = _tempRates[currency] != widget.customRates[currency];
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: hasChanged
-                          ? theme.colorScheme.primaryContainer.withOpacity(0.3)
-                          : theme.colorScheme.surfaceVariant.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: hasChanged ? theme.colorScheme.primary : theme.colorScheme.outline,
-                        width: hasChanged ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  currency,
-                                  style: theme.textTheme.titleSmall,
-                                ),
-                                Text(
-                                  _names[currency] ?? currency,
-                                  style: theme.textTheme.labelSmall,
-                                ),
-                              ],
-                            ),
-                            Row(
-                              children: [
-                                Text(
-                                  'Oficial: ${originalRate.toStringAsFixed(2)}',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                if (hasChanged) ...[
-                                  const SizedBox(width: 8),
-                                  Icon(
-                                    Icons.circle,
-                                    size: 8,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: controller,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
-                                ],
-                                style: theme.textTheme.titleMedium,
-                                decoration: InputDecoration(
-                                  labelText: 'Tasa (CUP)',
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: theme.colorScheme.surface,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(color: theme.colorScheme.outline),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(color: theme.colorScheme.outline),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
-                                  ),
-                                ),
-                                onChanged: (value) {
-                                  setState(() => _updateRate(currency, value));
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(Icons.refresh_rounded),
-                              tooltip: 'Restaurar valor oficial',
-                              onPressed: () {
-                                setState(() {
-                                  _tempRates[currency] = originalRate;
-                                  controller.text = originalRate.toStringAsFixed(2);
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Botones de acción
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: widget.onReset,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: BorderSide(color: theme.colorScheme.error),
-                    foregroundColor: theme.colorScheme.error,
-                  ),
-                  child: const Text('Restaurar todo'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _hasChanges ? () => widget.onSave(_tempRates) : null,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: theme.colorScheme.primary,
-                    foregroundColor: theme.colorScheme.onPrimary,
-                  ),
-                  child: const Text('Guardar cambios'),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }

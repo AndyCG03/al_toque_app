@@ -148,7 +148,7 @@ class _RatesScreenState extends State<RatesScreen> {
     final theme = Theme.of(context);
 
     // Definir el orden de las monedas
-    final fiatOrder = ['USD', 'EUR', 'MLC'];
+    final fiatOrder = ['USD', 'ECU', 'MLC'];
     final cryptoOrder = ['USDT_TRC20', 'TRX', 'BNB'];
 
     // Separar monedas fiat y crypto (excluir BTC)
